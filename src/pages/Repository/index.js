@@ -4,7 +4,7 @@ import PropTypes from "prop-types";
 
 import api from "../../services/api";
 import Container from "../../components/Container";
-import { Loading, Owner, IssueList } from "./styles";
+import { Loading, Owner, IssueList, FilterAndPagination } from "./styles";
 
 export default class Repository extends Component {
   static propTypes = {
@@ -19,10 +19,29 @@ export default class Repository extends Component {
     repository: {},
     issues: [],
     loading: true,
+    issuesState: "open",
+    currentPage: 1,
+    hasPreviousPage: false,
+    hasNextPage: false,
   };
 
   async componentDidMount() {
+    await this.fetchRepositoryData();
+  }
+
+  async componentDidUpdate(_, prevState) {
+    const { issuesState, currentPage } = this.state;
+    if (
+      prevState.issuesState !== issuesState ||
+      prevState.currentPage !== currentPage
+    ) {
+      await this.fetchRepositoryData();
+    }
+  }
+
+  fetchRepositoryData = async () => {
     const { match } = this.props;
+    const { issuesState, currentPage } = this.state;
 
     const repositoryName = decodeURIComponent(match.params.repository);
 
@@ -30,8 +49,9 @@ export default class Repository extends Component {
       api.get(`/repos/${repositoryName}`),
       api.get(`/repos/${repositoryName}/issues`, {
         params: {
-          state: "open",
-          per_page: 5,
+          state: issuesState,
+          per_page: 10,
+          page: currentPage,
         },
       }),
     ]);
@@ -40,11 +60,34 @@ export default class Repository extends Component {
       repository: repository.data,
       issues: issues.data,
       loading: false,
+      hasPreviousPage: String(issues.headers.link).indexOf('rel="prev"') >= 0,
+      hasNextPage: String(issues.headers.link).indexOf('rel="next"') >= 0,
     });
-  }
+  };
+
+  handleSelectChange = event => {
+    this.setState({
+      issuesState: event.target.value,
+      currentPage: 1,
+      hasPreviousPage: false,
+      hasNextPage: false,
+    });
+  };
+
+  handlePageChange = value => {
+    const { currentPage } = this.state;
+    this.setState({ currentPage: currentPage + value });
+  };
 
   render() {
-    const { repository, issues, loading } = this.state;
+    const {
+      repository,
+      issues,
+      loading,
+      issuesState,
+      hasPreviousPage,
+      hasNextPage,
+    } = this.state;
 
     if (loading) {
       return <Loading>Carregando</Loading>;
@@ -59,6 +102,29 @@ export default class Repository extends Component {
           <p>{repository.description}</p>
         </Owner>
 
+        <FilterAndPagination>
+          <select value={issuesState} onChange={this.handleSelectChange}>
+            <option value="all">All</option>
+            <option value="open">Open</option>
+            <option value="closed">Closed</option>
+          </select>
+          <div>
+            <button
+              type="button"
+              disabled={!hasPreviousPage}
+              onClick={() => this.handlePageChange(-1)}
+            >
+              {"<"}
+            </button>
+            <button
+              type="button"
+              disabled={!hasNextPage}
+              onClick={() => this.handlePageChange(+1)}
+            >
+              {">"}
+            </button>
+          </div>
+        </FilterAndPagination>
         <IssueList>
           {issues.map(issue => (
             <li key={String(issue.id)}>
